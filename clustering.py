@@ -1,4 +1,8 @@
 import math
+import os
+import pickle
+import sys
+
 
 def euclidean_similarity(a, b):
     _sum = 0
@@ -80,8 +84,8 @@ def complete_link_clustering(node_root, node_amount, sim_matrix):
         node1 = -1
         node2 = -1
 
-        for i in range(0, len(wordList)):
-            for j in range(i + 1, len(wordList)):
+        for i in range(0, node_amount):
+            for j in range(i + 1, node_amount):
                 if sim_matrix[i][j] == -math.inf:
                     continue
                 if max_sim < sim_matrix[i][j]:
@@ -102,10 +106,10 @@ def complete_link_clustering(node_root, node_amount, sim_matrix):
             node_root.add_child(new)
         elif cur1 is not None and cur2 is None:
             new.add_child(cur1)
-            new.add_child(Tree(node2, 0, wordList[node1][0]))
+            new.add_child(Tree(node2, 0, wordList[node2][0]))
             node_root.replace_child(cur1, new)
         elif cur1 is None and cur2 is not None:
-            new.add_child(Tree(node1, 0, wordList[node2][0]))
+            new.add_child(Tree(node1, 0, wordList[node1][0]))
             new.add_child(cur2)
             node_root.replace_child(cur2, new)
         else:
@@ -114,60 +118,124 @@ def complete_link_clustering(node_root, node_amount, sim_matrix):
             node_root.replace_child(cur1, new)
             node_root.delete_child(cur2)
 
-        for i in range(0, len(wordList) - 1):
+        for i in range(0, node_amount - 1):
             if i == node1:
                 continue
             sim_matrix[node1][i] = min(sim_matrix[node1][i], sim_matrix[node2][i])
             sim_matrix[i][node1] = min(sim_matrix[node1][i], sim_matrix[node2][i])
 
-        for i in range(0, len(wordList) - 1):
+        for i in range(0, node_amount - 1):
             sim_matrix[node2][i] = -math.inf
             sim_matrix[i][node2] = -math.inf
 
         linkage_count -= 1
 
-    #return node_root
+
+cur_cluster = []
+def clustering(node, threshold, cluster_list):
+    assert isinstance(node, Tree)
+    assert isinstance(cluster_list, list)
+    global cur_cluster
+    cur = node
+    if len(cur.children) == 0:
+        cur_cluster.append(cur.word)
+        return
+
+    for i in range(len(cur.children)):
+        clustering(cur.children[i], threshold, cluster_list)
+        if cur.similarity < threshold:
+            if len(cur_cluster) > 0:
+                cluster_list.append(cur_cluster)
+            cur_cluster = []
 
 
-#본문
-f = open("WordEmbedding.txt", 'r')
-wordList = []
+def main():
+    print(sys.argv[1:])
 
-while True:
-    word = f.readline()
-    line = f.readline()
+    wordlist = []
 
-    if not line:
-        break
-    v = line.split(',')
-    for i in range(0, len(v)):
-        v[i] = float(v[i])
-    wordList.append([word, v])
+    with open("WordEmbedding.txt", 'r') as f:
+        while True:
+            word = f.readline()
+            line = f.readline()
+
+            if not line:
+                break
+            v = line.split(',')
+            for i in range(0, len(v)):
+                v[i] = float(v[i])
+            wordlist.append([word, v])
+
+    print("Data Loaded")
+
+    Cosine_similarity_matrix = [[-math.inf]*len(wordlist) for i in range(len(wordlist))]
+    Euclidean_similarity_matrix = [[-math.inf]*len(wordlist) for i in range(len(wordlist))]
+
+    Cosine_tree_root = Tree(-1, -2)
+    Euclidean_tree_root = Tree(-1, -2)
+
+    cos_sim_mat_loaded = False
+    euc_sim_mat_loaded = False
+    cos_cluster_loaded = False
+    euc_cluster_loaded = False
+
+    if os.path.isfile("pickle_cos_sim_mat.txt"):
+        with open("pickle_cos_sim_mat.txt", 'rb') as f:
+            Cosine_similarity_matrix = pickle.load(f)
+            cos_sim_mat_loaded = True
+
+    if os.path.isfile("pickle_euc_sim_mat.txt"):
+        with open("pickle_euc_sim_mat.txt", 'rb') as f:
+            Euclidean_similarity_matrix = pickle.load(f)
+            euc_sim_mat_loaded = True
+
+    if os.path.isfile("pickle_cos_cluster.txt"):
+        with open("pickle_cos_cluster.txt", 'rb') as f:
+            Cosine_tree_root = pickle.load(f)
+            cos_cluster_loaded = True
+
+    if os.path.isfile("pickle_euc_cluster.txt"):
+        with open("pickle_euc_cluster.txt", 'rb') as f:
+            Euclidean_tree_root = pickle.load(f)
+            euc_cluster_loaded = True
+
+    if not cos_sim_mat_loaded:
+        for i in range(0, len(wordlist)-1):
+            for j in range(i+1, len(wordlist)-1):
+                cos_sim = cos_similarity(wordlist[i][1], wordlist[j][1])
+                Cosine_similarity_matrix[i][j] = cos_sim
+                Cosine_similarity_matrix[j][i] = cos_sim
+        with open("pickle_cos_sim_mat.txt", "wb") as f:
+            pickle.dump(Cosine_similarity_matrix, f)
+        print("Cosine Similarity Matrix Calculated")
+
+    if not euc_sim_mat_loaded:
+        for i in range(0, len(wordlist)-1):
+            for j in range(i+1, len(wordlist)-1):
+                euc_sim = euclidean_similarity(wordlist[i][1], wordlist[j][1])
+                Euclidean_similarity_matrix[i][j] = euc_sim
+                Euclidean_similarity_matrix[j][i] = euc_sim
+        with open("pickle_euc_sim_mat.txt", "wb") as f:
+            pickle.dump(Euclidean_similarity_matrix, f)
+        print("Euclidean Similarity Matrix Calculated")
+
+    if not cos_cluster_loaded:
+        complete_link_clustering(Cosine_tree_root, len(wordlist), Cosine_similarity_matrix)
+        with open("pickle_cos_cluster.txt", "wb") as f:
+            pickle.dump(Cosine_tree_root, f)
+        print("Cosine Complete Link Clustering Complete")
+
+    if not euc_cluster_loaded:
+        complete_link_clustering(Euclidean_tree_root, len(wordlist), Euclidean_similarity_matrix)
+        with open("pickle_euc_cluster.txt", "wb") as f:
+            pickle.dump(Euclidean_tree_root, f)
+        print("Euclidean Complete Link Clustering Complete")
+
+    cluster_list = []
+    clustering(Cosine_tree_root, 0.2, cluster_list)
+
+    print("clustering complete")
 
 
-f.close()
-print("Data Loaded")
-
-Cosine_similarity_matrix = [[-math.inf]*len(wordList) for i in range(len(wordList))]
-Euclidean_similarity_matrix = [[-math.inf]*len(wordList) for i in range(len(wordList))]
-for i in range(0, len(wordList)-1):
-    for j in range(i+1, len(wordList)-1):
-        cos_sim = cos_similarity(wordList[i][1], wordList[j][1])
-        euc_sim = euclidean_similarity(wordList[i][1], wordList[j][1])
-        Cosine_similarity_matrix[i][j] = cos_sim
-        Cosine_similarity_matrix[j][i] = cos_sim
-        Euclidean_similarity_matrix[i][j] = euc_sim
-        Euclidean_similarity_matrix[j][i] = euc_sim
-
-print("Similarity Matrix Calculated")
-
-Cosine_tree_root = Tree(-1, -2)
-Euclidean_tree_root = Tree(-1, -2)
-
-complete_link_clustering(Cosine_tree_root, len(wordList), Cosine_similarity_matrix)
-complete_link_clustering(Euclidean_tree_root, len(wordList), Euclidean_similarity_matrix)
-
-print("Complete Link Clustering Complete")
-
-
-
+if __name__ == __main__
+    main()
